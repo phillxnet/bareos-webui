@@ -33,10 +33,12 @@ docker build -t bareos-webui .
 
 The following assumes:
 - The Director (named "bareos-dir") is accessible via docker network `bareosnet`.
+See: https://docs.docker.com/engine/network
 ```shell
-docker run --name bareos-webui -it\
+docker run --name bareos-webui\
  -e BAREOS_DIR_NAME='bareos-dir'\
- --network=bareosnet bareos-webui sh
+ -p 9100:80\
+ --network=bareosnet bareos-webui
 # and to remove
 docker remove bareos-webui
 ```
@@ -47,14 +49,31 @@ docker remove bareos-webui
 docker exec -it bareos-webui sh
 ```
 
+## Website access
+
+Via an example IP of the container:
+
+> http://172.20.0.6/bareos-webui/
+
+N.B. we add the following in docker build:
+```shell
+DirectoryIndex index.php
+<FilesMatch "\.php$">
+    SetHandler "proxy:fcgi://127.0.0.1:9000/"
+    #CGIPassAuth on
+</FilesMatch>
+```
+to /etc/apache2/conf.d/mod_fcgid.conf
+
 ## BareOS rpm package scriptlet actions
 
 ### bareos-webui
 ```shell
-# Installs the following apache config file:
+# Installs the following apache config file containing:
+# `Alias /bareos-webui  /usr/share/bareos-webui/public`
 /etc/apache2/conf.d/bareos-webui.conf
 # WebUI files:
- /usr/share/bareos-webui
+/usr/share/bareos-webui
 ```
 There are also the following files intended to pre-configure/example-config a local director.
 ```shell

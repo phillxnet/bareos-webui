@@ -12,7 +12,12 @@ LABEL org.opencontainers.image.description="Bareos WebUI - deploys packages from
 
 # We only know if we are COMMUNIT or SUBSCRIPTION at run-time via env vars.
 # - apache2-utils: /usr/sbin/apache2ctl (to invoke apache2 without systemd)
-RUN zypper --non-interactive install tar gzip wget iputils strace apache2-utils procps
+# - apache2-event: provides, via the alternative system, an mpm_event (non mpm_prefork) apache variant.
+# -- recommendation when using FastCGI / PHP-FPM: with FastCGI:
+# "... the FastCGI pool determines how to handle incoming requests, and php-fpm spawns new workers... "
+# Reference: https://www.zend.com/blog/apache-phpfpm-modphp
+# And: https://en.opensuse.org/SDB:Apache_FastCGI_and_PHP-FPM_configuration
+RUN zypper --non-interactive install tar gzip wget iputils strace apache2-event apache2-mod_fcgid apache2-utils procps less nano
 
 # Create bareos group & user within container with set gid & uid.
 # Docker host and docker container share uid & gid.
@@ -48,6 +53,17 @@ if [ ! -f  /etc/bareos-webui/bareos-webui-install.control ]; then
 fi
 EOF
 
+# https://en.opensuse.org/SDB:Apache_FastCGI_and_PHP-FPM_configuration
+RUN sed -i 's/<\/IfModule>/#<\/IfModule>/' /etc/apache2/conf.d/mod_fcgid.conf
+RUN <<EOF2 cat >> /etc/apache2/conf.d/mod_fcgid.conf
+DirectoryIndex index.php
+<FilesMatch "\.php$">
+    SetHandler "proxy:fcgi://127.0.0.1:9000/"
+    #CGIPassAuth on
+</FilesMatch>
+</IfModule>
+EOF2
+
 # Stash default package config: ready to populare host volume mapping
 # https://docs.bareos.org/Configuration/CustomizingTheConfiguration.html#subdirectory-configuration-scheme
 RUN ls -la /etc/bareos-webui > /etc/bareos-webui/bareos-webui-default-permissions.txt
@@ -56,8 +72,10 @@ RUN tar czf bareos-webui.tgz /etc/bareos-webui
 # Config
 VOLUME /etc/bareos-webui
 
-# 'WebUI' interface port.
-EXPOSE 9100
+# 'WebUI' interface port: to be mapped to e.g.: 9100
+EXPOSE 80
+# PHP-FPM service, via /status
+# EXPOSE 9001
 
 COPY docker-entrypoint.sh /usr/local/sbin/docker-entrypoint.sh
 RUN chmod u+x /usr/local/sbin/docker-entrypoint.sh
@@ -74,4 +92,5 @@ WORKDIR /var/lib/wwwrun
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 # CMD ["/usr/sbin/apache2ctl", "-D", "FOREGROUND"]
+# /usr/sbin/start_apache2 -DFOREGROUND -k start
 CMD ["/usr/sbin/start_apache2", "-DFOREGROUND", "-k", "start"]

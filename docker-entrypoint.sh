@@ -23,14 +23,31 @@ if [ ! -f /etc/bareos-webui/bareos-webui-config.control ]; then
   # especially in the case of a remote director: translates to Director selection on home-page.
   sed -i 's#localhost-dir#'"${BAREOS_DIR_NAME}"'#' \
     /etc/bareos-webui/directors.ini
+
+  # Enable PHP-FPM daemon /status page on default listen address:
+  sed -i 's#;pm.status_path = .*#pm.status_path = \/status#' \
+    /etc/php8/fpm/php-fpm.d/www.conf
+
   # Control file
   touch /etc/bareos-webui/bareos-webui-config.control
 fi
 
-# May have to start php-fpm deamon (default) here:
+# https://docs.bareos.org/IntroductionAndTutorial/BareosWebui.html
+# https://www.zend.com/blog/apache-phpfpm-modphp
+# Bareos-webui apache2 server requries PHP-FPM and mod-rewrite and mod-fcgid enabled
+# See: https://httpd.apache.org/mod_fcgid/ & https://httpd.apache.org/mod_fcgid/mod/mod_fcgid.html
+# Also openSuse specific: https://en.opensuse.org/SDB:Apache_FastCGI_and_PHP-FPM_configuration
+# `apachectl -M` to see enabled Apache modules
+# We must also start invoke a PHP-FPM servcie:
+# `rpm -ql php8-fpm` includes: '/usr/lib/systemd/system/php-fpm.service' with an ExecStart akin to the following:
 # - /etc/php8/fpm/php-fpm.conf
 # - /etc/php8/fpm/php.ini
-
+# - /etc/php8/fpm/php-fpm.d/*.conf (we have a pre-installed: /etc/php8/fpm/php-fpm.d/www.conf)
+# Notable configurations in www.conf:
+# - ;listen.allowed_clients = 127.0.0.1
+# - ;pm.status_path = /status
+# - ;pm.status_listen = 127.0.0.1:9001
+/usr/sbin/php-fpm --fpm-config /etc/php8/fpm/php-fpm.conf
 
 # Run Dockerfile CMD
 exec "$@"
