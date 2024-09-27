@@ -36,9 +36,14 @@ The following assumes:
 See: https://docs.docker.com/engine/network
 ```shell
 docker run --name bareos-webui\
+ --hostname bareos-webui\
  -e BAREOS_DIR_NAME='bareos-dir'\
  -p 9100:80\
  --network=bareosnet bareos-webui
+# stop via:
+docker stop bareos-webui
+# start via:
+docker start bareos-webui
 # and to remove
 docker remove bareos-webui
 ```

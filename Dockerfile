@@ -63,6 +63,39 @@ DirectoryIndex index.php
 </FilesMatch>
 </IfModule>
 EOF2
+RUN sed -i 's/APACHE_MPM=""/APACHE_MPM="event"/' /etc/sysconfig/apache2
+
+# https://httpd.apache.org/docs/2.4/mod/mpm_common.html#maxrequestworkers
+# To address: "AH00513: WARNING: MaxRequestWorkers of 256 is not an integer multiple of ThreadsPerChild of 25..."
+# /etc/apache2/server-tuning.conf
+# see also: /etc/sysconfig/apache2
+RUN sed -i 's/MaxRequestWorkers         256/MaxRequestWorkers         50/' /etc/apache2/server-tuning.conf
+RUN sed -i 's/StartServers .*/StartServers         1/' /etc/apache2/server-tuning.conf
+# Set Global `ServerName localhost`, avoids:
+# "AH00558: httpd-event: Could not reliably determine the server's fully qualified domain name"
+RUN sed -i '/^Alias .*/a ServerName localhost' /etc/apache2/conf.d/bareos-webui.conf
+
+# https://docs.bareos.org/IntroductionAndTutorial/BareosWebui.html
+# https://www.zend.com/blog/apache-phpfpm-modphp
+# Bareos-webui apache2 server requries PHP-FPM and mod-rewrite and mod-fcgid enabled
+# See: https://httpd.apache.org/mod_fcgid/ & https://httpd.apache.org/mod_fcgid/mod/mod_fcgid.html
+# Also openSuse specific: https://en.opensuse.org/SDB:Apache_FastCGI_and_PHP-FPM_configuration
+# `apachectl -M` to see enabled Apache modules
+# We must also start invoke a PHP-FPM servcie:
+# `rpm -ql php8-fpm` includes: '/usr/lib/systemd/system/php-fpm.service' with an ExecStart akin to the following:
+# - /etc/php8/fpm/php-fpm.conf
+# - /etc/php8/fpm/php.ini
+# - /etc/php8/fpm/php-fpm.d/*.conf (we have a pre-installed: /etc/php8/fpm/php-fpm.d/www.conf)
+# Notable configurations in www.conf:
+# - ;listen.allowed_clients = 127.0.0.1
+# - ;pm.status_path = /status
+# - ;pm.status_listen = 127.0.0.1:9001
+# /usr/sbin/php-fpm --fpm-config /etc/php8/fpm/php-fpm.conf
+
+# Install pre-compiled x86_64-linux glibc binary of multirun from GitHub Release.
+# https://github.com/nicolas-van/multirun
+RUN wget -c https://github.com/nicolas-van/multirun/releases/download/1.1.3/multirun-x86_64-linux-gnu-1.1.3.tar.gz -O - | tar -xz
+RUN mv multirun /usr/local/sbin
 
 # Stash default package config: ready to populare host volume mapping
 # https://docs.bareos.org/Configuration/CustomizingTheConfiguration.html#subdirectory-configuration-scheme
@@ -92,5 +125,11 @@ WORKDIR /var/lib/wwwrun
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 # CMD ["/usr/sbin/apache2ctl", "-D", "FOREGROUND"]
+# https://docs.docker.com/engine/containers/multi-service_container/
+# https://medium.com/@keska.damian/meet-the-supervisord-alternative-multirun-6b3a259805e
+# https://github.com/nicolas-van/multirun
+# https://nicolas-van.github.io/multirun/
+# /usr/sbin/php-fpm --fpm-config /etc/php8/fpm/php-fpm.conf
 # /usr/sbin/start_apache2 -DFOREGROUND -k start
-CMD ["/usr/sbin/start_apache2", "-DFOREGROUND", "-k", "start"]
+# CMD ["/usr/sbin/start_apache2", "-DFOREGROUND", "-k", "start"]
+CMD ["multirun", "/usr/sbin/php-fpm --nodaemonize --fpm-config /etc/php8/fpm/php-fpm.conf", "/usr/sbin/start_apache2 -DFOREGROUND -k start"]
